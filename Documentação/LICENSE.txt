@@ -1,0 +1,64 @@
+Copyright (c) 2026 HEXPRESSA CONSULTORIA FLORESTAL LTDA.
+Todos os direitos reservados.
+
+Este software e o código-fonte associado (incluindo, mas não se limitando a,
+todos os ficheiros JavaScript, HTML, CSS, documentação e ficheiros de
+configuração) são propriedade exclusiva de HEXPRESSA CONSULTORIA FLORESTAL LTDA e estão
+protegidos pelas leis de direitos autorais aplicáveis.
+
+É expressamente proibido, sem autorização prévia e por escrito do titular:
+
+  1. Copiar, reproduzir ou duplicar este software, no todo ou em parte;
+  2. Modificar, adaptar, traduzir ou criar obras derivadas;
+  3. Distribuir, sublicenciar, vender, alugar ou transferir o software
+     a terceiros;
+  4. Disponibilizar o software publicamente (incluindo em repositórios
+     públicos, sites, ou serviços de hospedagem);
+  5. Utilizar o software para fins comerciais sem licença válida;
+  6. Remover ou alterar este aviso de copyright.
+
+O uso deste software é permitido apenas ao titular do copyright e a quem
+este autorizar formalmente por escrito.
+
+O SOFTWARE É FORNECIDO "COMO ESTÁ", SEM GARANTIA DE QUALQUER TIPO, EXPRESSA
+OU IMPLÍCITA, INCLUINDO MAS NÃO SE LIMITANDO A GARANTIAS DE COMERCIALIZAÇÃO,
+ADEQUAÇÃO A UM PROPÓSITO ESPECÍFICO E NÃO VIOLAÇÃO. EM NENHUM CASO O TITULAR
+DO COPYRIGHT SERÁ RESPONSÁVEL POR QUAISQUER DANOS, PERDAS OU PREJUÍZOS
+DECORRENTES DO USO DESTE SOFTWARE.
+
+Para autorizações de uso, contactar:
+  contato@hexpressa.com.br
+
+---
+
+Copyright (c) 2026 [YOUR NAME OR COMPANY]
+All rights reserved.
+
+This software and associated source code (including but not limited to all
+JavaScript, HTML, CSS files, documentation, and configuration files) are the
+exclusive property of HEXPRESSA CONSULTORIA FLORESTAL LTDA and are protected by applicable
+copyright laws.
+
+Without prior written permission from the copyright holder, you may NOT:
+
+  1. Copy, reproduce, or duplicate this software, in whole or in part;
+  2. Modify, adapt, translate, or create derivative works;
+  3. Distribute, sublicense, sell, rent, or transfer the software to third
+     parties;
+  4. Make the software publicly available (including on public repositories,
+     websites, or hosting services);
+  5. Use the software for commercial purposes without a valid license;
+  6. Remove or alter this copyright notice.
+
+Use of this software is permitted only by the copyright holder and those
+formally authorized in writing.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+For licensing inquiries, contact:
+  contato@hexpressa.com.br

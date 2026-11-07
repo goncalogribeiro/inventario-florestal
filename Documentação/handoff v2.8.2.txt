@@ -1,0 +1,518 @@
+HANDOFF — Sistema de Inventário Florestal v2.8.2+SC.r2 → v2.9.0
+markdown
+# HANDOFF — Sistema de Inventário Florestal
+**Versão atual:** v2.8.2+SC.r2  
+**Próxima versão-alvo:** v2.9.0 (Planejamento de Longo Prazo / FSC)  
+**Data:** Novembro/2026  
+**Sentinel:** `__MAIN_282_SC_R2__` → `__MAIN_290__`
+
+---
+
+## 1. Contexto do Projeto
+
+Sistema web (HTML5 + ES modules, sem build step, servido por `npx serve .`) para 
+inventário florestal de *Pinus taeda* e *Eucalyptus*. Motor analítico completo e 
+validado, com foco em plantações comerciais brasileiras.
+
+### Estado da arte do motor (v2.8.2+SC.r2)
+
+- **Hipsometria:** 24 modelos lineares + 3 não lineares; ranking por soma de ranks.
+- **Volume:** fator de forma com interpolação etária e clamp.
+- **Afilamento:** *Power Taper* calibrado por bisseção (motor oficial).
+- **Traçamento (bucking):** cenários editáveis com dapMin/dapMax.
+- **Calibração comercial:** fator de referência único por bisseção sobre volume traçado.
+- **Índices e Painel CEO:** KPIs, sensibilidade a preço, FPC no IC 95%.
+- **Simulador de Desbaste (Painel 2.5):** diagnóstico G vs. IS (Padoin, 2007).
+- **Alvos por Idade (Painel 6):** referências de sortimento que variam com a idade (Kohler, IPEF, Santos).
+- **Schöepfer diagnóstico (Painel 7):** comparação lado a lado com o *Power Taper*.
+  - ⚠ **NÃO é motor oficial** — diretriz v2.8.2 (ver §7).
+- **Prognose (Painel 3.5):** Chapman-Richards bivariado + mortalidade + autodesbaste SDI,
+  sem ingrowth (não há recrutamento em plantio comercial).
+
+---
+
+## 2. Diretrizes Técnicas Invioláveis
+
+### 2.1. Motor oficial = Power Taper Calibrado
+
+> ⚠️ Os coeficientes de Schöepfer (Santos et al., 2019) exigem **cubagem rigorosa** 
+> (d₁, d₂, d₄, d₆…) para calibração local. Um inventário convencional (DAP + H) 
+> **não permite ajustar** esses coeficientes.
+>
+> **Decisão:** o motor oficial continua a ser o *Power Taper Calibrado*. 
+> O Schöepfer é **exclusivamente diagnóstico** até que o módulo de cubagem rigorosa 
+> esteja pronto (ver §6 — Fase 3).
+
+### 2.2. Sem ingrowth em plantio comercial
+
+> Plantações brasileiras de *Pinus*/*Eucalyptus* não têm recrutamento natural 
+> significativo. As árvores são as plantadas. O modelo de prognose trata 
+> apenas **crescimento** das árvores existentes + **mortalidade** + 
+> **autodesbaste** (SDI).
+
+### 2.3. Prognose ≠ Desbaste (mutuamente exclusivos na v2.8.2)
+
+> Na versão atual, os painéis 2.5 (desbaste) e 3.5 (prognose) são 
+> **mutuamente exclusivos**. Aplicar um bloqueia o outro. Reverter é obrigatório 
+> antes de alternar. Isto será **resolvido na v2.9.0** com o painel de 
+> Planejamento de Longo Prazo (ver §3).
+
+---
+
+## 3. Próxima Fase — v2.9.0: Planejamento de Longo Prazo
+
+### 3.1. Motivação e requisito de certificação
+
+O **FSC** (Forest Stewardship Council) exige, nos Princípios e Critérios:
+- **Compromisso de longo prazo** demonstrado por plano de manejo durável.
+- **Metas verificáveis** de produção e sustentabilidade.
+- **Monitoramento contínuo** de produtividade, taxas de crescimento, 
+  rendimento dos produtos e viabilidade económica.
+
+Para *Pinus taeda* no Sul do Brasil, um horizonte de **23–25 anos** cobre 
+pelo menos **um ciclo completo de rotação** (20–25 anos). Este horizonte 
+é plenamente justificável e materializa o requisito do FSC.
+
+### 3.2. Objetivo do novo painel
+
+Criar o **Painel 3.6 — Planejamento de Longo Prazo** que simula **regimes 
+de manejo completos** ao longo de 23–25 anos, com:
+
+- Definição **transparente** de desbastes (idades, intensidades, tipos).
+- Projeção **ano a ano** de N, G, Dg, hDom, volume em pé, volume removido.
+- Cálculo de **fluxo de caixa** (com e sem desconto).
+- Indicadores de **sustentabilidade** (VMA, produção acumulada).
+- **Corte raso** no fim do horizonte (opcional mas recomendado).
+- Exportação (CSV/Excel) para dossiê de certificação.
+
+### 3.3. Decisões de arquitetura
+
+#### 3.3.1. Ficheiros novos
+js/
+├── planejamento.js ← Motor (stand-level simulation loop)
+├── ui-planejamento.js ← UI (config, gráficos, tabela, indicadores)
+└── tabelas/
+└── regimes-referencia.js ← Regimes pré-definidos (conservador/balanceado/intensivo)
+
+text
+
+#### 3.3.2. Ficheiro a modificar
+
+- **`index.html`** — adicionar `<section id="painelPlanejamento">` após o Painel 3.5.
+- **`js/main.js`** — wiring do painel + novo estado + integração com prognose.
+- **`css/style.css`** — regras específicas do painel.
+
+#### 3.3.3. Estrutura de dados do regime
+
+```js
+// js/tabelas/regimes-referencia.js
+export const REGIMES_REFERENCIA = Object.freeze({
+  conservador: {
+    nome: 'Conservador',
+    descricao: 'Sem desbaste até 15 anos; corte raso aos 25.',
+    horizonteAnos: 25,
+    corteRasoIdade: 25,
+    desbastes: [],
+    taxaDesconto: 0.06,
+  },
+  balanceado: {
+    nome: 'Balanceado',
+    descricao: 'Um desbaste aos 10 (30%) e outro aos 15 (25%); corte raso aos 23.',
+    horizonteAnos: 23,
+    corteRasoIdade: 23,
+    desbastes: [
+      { idade: 10, tipo: 'baixo', intensidadePct: 30, removerMortas: true },
+      { idade: 15, tipo: 'baixo', intensidadePct: 25, removerMortas: true },
+    ],
+    taxaDesconto: 0.06,
+  },
+  intensivo: {
+    nome: 'Intensivo',
+    descricao: 'Três desbastes (8, 12, 16); corte raso aos 22.',
+    horizonteAnos: 22,
+    corteRasoIdade: 22,
+    desbastes: [
+      { idade: 8,  tipo: 'sistematico', cadaN: 3, removerMortas: true },
+      { idade: 12, tipo: 'selectivo',   intensidadePct: 30, removerMortas: true },
+      { idade: 16, tipo: 'baixo',       intensidadePct: 25, removerMortas: true },
+    ],
+    taxaDesconto: 0.06,
+  },
+});
+3.3.4. Algoritmo do motor (planejamento.js)
+text
+ENTRADA: estadoAtual (do Painel 3), regime (ver acima)
+SAÍDA:  { serieAnoAno: [...], resumo: {...}, arvoresCorteRaso: [...] }
+
+1. Chamar projetarPovoamento(estadoAtual, { idadeAlvo: próximoEvento })
+   onde próximoEvento = min(próximo desbaste, corte raso)
+
+2. No ano do desbaste:
+   a. Reconstruir árvores sintéticas para essa idade (já feito por projetarPovoamento)
+   b. Chamar aplicarDesbaste(árvores, configDoRegime)
+   c. Registar volume removido, receita (via traçamento) e custos
+   d. As árvores remanescentes tornam-se o "estado atual" para a próxima iteração
+
+3. No ano do corte raso:
+   a. Aplicar traçamento completo (processarCenario) para estimar receita
+   b. Registar volume final e receita final
+
+4. Repetir até idade ≥ horizonte
+
+5. Calcular indicadores:
+   - VMA (m³/ha·ano) = volume total removido / horizonte
+   - VPL (R$/ha) = Σ (fluxo_ano / (1+taxa)^ano) - custos_descontados
+   - TIR (%)
+   - SDI máximo atingido
+   - Cobertura do horizonte (anos com dados)
+3.3.5. Estrutura da série ano a ano
+js
+{
+  serieAnoAno: [
+    {
+      idade: 7,
+      nHa: 1500,
+      gHa: 30.2,
+      dgCm: 16.1,
+      hDomM: 11.62,
+      volumeEmPeM3Ha: 195.4,
+      volumeRemovidoM3Ha: 0,
+      receitaBrutaRsha: 0,
+      custoRsha: 0,
+      fluxoLiquidoRsha: 0,
+      fluxoDescontadoRsha: 0,
+      evento: null,       // ou 'desbaste:baixo:30%' / 'corte-raso'
+      sdiOcupacao: 0.42,
+    },
+    // ...
+  ],
+  resumo: {
+    horizonteAnos: 23,
+    idadeCorteRaso: 23,
+    vmaM3HaAno: 24.5,
+    volumeTotalRemovidoM3Ha: 380.2,
+    volumeCorteRasoM3Ha: 185.6,
+    receitaTotalRsha: 42500.00,
+    custoTotalRsha: 3500.00,
+    vplRsha: 12800.00,
+    tir: 0.14,
+    sdiMax: 0.61,
+    idadeSdiMax: 14,
+    desbastes: [/* ... */],
+    alertas: [/* ... */],
+  },
+  arvoresCorteRaso: [/* árvores finais para reuso no pipeline */],
+}
+3.4. UI do painel (wireframe lógico)
+text
+┌─────────────────────────────────────────────────────────────┐
+│ 3.6. Planejamento de Longo Prazo (FSC)                     │
+├─────────────────────────────────────────────────────────────┤
+│ [Aviso azul: "Horizonte 23-25 anos conforme FSC"]          │
+├─────────────────────────────────────────────────────────────┤
+│ Configuração do Regime                                     │
+│ ┌──────────────────────────────────────────────────────┐   │
+│ │ [Radio] Regime pré-definido:                         │   │
+│ │   ○ Conservador  ○ Balanceado  ● Intensivo           │   │
+│ │                                                       │   │
+│ │ [Número] Horizonte (anos): [25]                       │   │
+│ │ [Número] Idade de corte raso: [23]                    │   │
+│ │ [Número] Taxa de desconto: [6.0] %/ano                │   │
+│ │                                                       │   │
+│ │ Desbastes (editável):                                │   │
+│ │ ┌────────┬──────────┬──────────┬────────┐            │   │
+│ │ │ Idade  │ Tipo     │ Intens.  │ Ação   │            │   │
+│ │ ├────────┼──────────┼──────────┼────────┤            │   │
+│ │ │  10    │ baixo    │  30%     │ [×]    │            │   │
+│ │ │  15    │ baixo    │  25%     │ [×]    │            │   │
+│ │ └────────┴──────────┴──────────┴────────┘            │   │
+│ │ [+ Adicionar desbaste]                                │   │
+│ └──────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────┤
+│ [Botão] Simular Planejamento                                │
+├─────────────────────────────────────────────────────────────┤
+│ Indicadores de Sustentabilidade (cards):                   │
+│ ┌──────────┬──────────┬──────────┬──────────┐              │
+│ │ VMA      │ VPL      │ TIR      │ SDI max  │              │
+│ │ 24.5     │ R$12.8k  │ 14.0%    │ 61%      │              │
+│ │ m³/ha·a  │ /ha      │          │ aos 14a  │              │
+│ └──────────┴──────────┴──────────┴──────────┘              │
+├─────────────────────────────────────────────────────────────┤
+│ Gráfico 1: Produção acumulada (vol em pé + removido)       │
+│ Gráfico 2: Fluxo de caixa (barras ano a ano)               │
+│ Gráfico 3: Evolução do SDI com zonas de conforto           │
+├─────────────────────────────────────────────────────────────┤
+│ Tabela ano a ano:                                          │
+│ ┌─────┬──────┬─────┬─────┬─────┬────────┬───────┬───────┐ │
+│ │ Ano │ N/ha │ G   │ Dg  │ hDom│ VolEmPé│ Remov │ Evento│ │
+│ ├─────┼──────┼─────┼─────┼─────┼────────┼───────┼───────┤ │
+│ │  7  │ 1500 │ 30  │ 16  │ 11.6│  195   │   0   │       │ │
+│ │  8  │ 1450 │ 31  │ 17  │ 12.2│  210   │   0   │       │ │
+│ │ ... │      │     │     │     │        │       │       │ │
+│ │  10 │ 1100 │ 28  │ 19  │ 13.5│  230   │  85   │ Desb. │ │
+│ │ ... │      │     │     │     │        │       │       │ │
+│ │  23 │  450 │ 42  │ 34  │ 21.0│  260   │  260  │ Corte │ │
+│ └─────┴──────┴─────┴─────┴─────┴────────┴───────┴───────┘ │
+├─────────────────────────────────────────────────────────────┤
+│ Ações:                                                     │
+│ [✓ Aplicar ao Pipeline] [↶ Reverter] [📥 Exportar CSV]     │
+└─────────────────────────────────────────────────────────────┘
+3.5. Regras de integração com painéis existentes
+Painel 3.5 (Prognose simples): continua a existir para projeções rápidas
+de uma única idade. O Painel 3.6 é o "modo completo".
+
+Painel 2.5 (Desbaste): continua a existir para simulação pontual.
+O Painel 3.6 é o "modo multi-desbaste".
+
+Conflito: se 3.5 ou 3.6 estiver aplicado, o 2.5 fica bloqueado (e vice-versa).
+Mesma lógica atual de _estadoPrePrognose / _estadoOriginal.
+
+Ao aplicar o planejamento: as árvores do corte raso tornam-se as
+_arvoresAtivas e o pipeline (Volume, Afilamento, Traçamento, CEO) recalcula
+sobre elas. Os banners azuis "Dados Projetados" aparecem em todos os painéis
+seguintes.
+
+3.6. Validações obrigatórias
+Horizonte ≥ 23 anos — alerta se menor (não bloqueia, mas avisa).
+
+Corte raso ≤ horizonte — obrigatório.
+
+Desbastes em idades estritamente crescentes — validar.
+
+Nenhum desbaste após o corte raso — validar.
+
+Intensidade acumulada ≤ 80% — alerta se ultrapassar.
+
+Regime fisicamente possível — se o solver falhar num ano, abortar com
+mensagem clara.
+
+3.7. Indicadores de sustentabilidade (FSC)
+Indicador	Fórmula	Limite de alerta
+VMA (m³/ha·ano)	(Vol removido + Vol corte) / horizonte	≥ 15 m³/ha·ano
+Produção sustentada	Desvio-padrão de VMA anual	< 20% da média
+SDI máximo	max(SDI/N_ha·ano)	≤ 0.65
+Cobertura do horizonte	anos_com_dados / horizonte	≥ 0.95
+VPL	Σ fluxo_descontado	> 0
+TIR	raiz de Σ fluxo/(1+r)^t = 0	> taxa de desconto
+4. Estado do Código (v2.8.2+SC.r2)
+4.1. Ficheiros existentes (js/)
+text
+main.js                         (v2.8.2+SC.r2 — orquestrador)
+parser.js
+chauvenet.js
+regressao.js
+algebra.js
+estatistica.js
+selecao.js
+constantes.js
+volume.js
+afilamento.js
+tracamento.js                   (opcoes.modelo retrocompatível)
+cenarios.js
+calibracao-classificacao.js     (opcoes.processarFn)
+indices.js
+site-index.js
+graficos.js
+graficos-ceo.js
+ui-cenarios.js
+desbaste.js
+desbaste-diagnostico.js
+ui-desbaste.js
+ui-diagnostico.js
+taper-rigoroso.js               (Schöepfer diagnóstico)
+prognose.js                     (Chapman-Richards + mortalidade + SDI)
+ui-prognose.js                  (editor + gráficos + tabela + balanço)
+unidades.js
+
+tabelas/
+├── fatores.js
+├── taper-referencia.js
+├── schoeffer-primitivas.js     (módulo de folha)
+└── referencia-idade.js
+
+equacoes/
+└── hipsometricas.js
+4.2. Ficheiros HTML e CSS
+index.html — painéis 1 a 9 (ver §5).
+
+css/style.css — inclui regras de prognose.
+
+4.3. IDs críticos no index.html (não alterar sem atualizar main.js)
+Painel 1 (entrada): arquivo, especie, aplicarChauvenet, btnProcessar
+Log: log
+Painel 2 (resultados): painelResultados, vencedor, ranking
+Painel 2.5 (desbaste): painelDesbaste, diagnosticoDesbaste,
+editorDesbaste, previewDesbaste, resultadoDesbaste,
+tabelaBalancoDesbaste, btnAplicarDesbaste, btnReverterDesbaste,
+statusDesbaste
+Painel 3 (volume): painelVolume, inputIdade, inputAreaTotal,
+selectUnidadeArea, chkOverrideFator, inputFatorManual, btnVolume,
+resultadoVolume, spanFatorAplicado, avisoPendenteFator,
+tabParcelas, tabPovoamento
+Painel 3.5 (prognose): painelPrognose, configuracaoPrognose,
+graficoPrognose, graficoPrognoseDensidade, graficoPrognoseHistograma,
+tabelaPrognose, resultadoPrognose, tabelaBalancoProjecao,
+btnAplicarPrognose, btnReverterPrognose, statusPrognose
+Painel 4 (afilamento): painelAfilamento, spanBetaMedio, spanBetaMin,
+spanBetaMax, spanHc6, spanHc8, avisoAfilamento,
+tabAfilamentoParcela, tabAfilamentoPovoamento, auditoriaAfilamento
+Painel 5 (cenários): painelCenarios, editorCenarios,
+btnRestaurarTodos, btnRecalcular, statusCenarios
+Painel 6 (calibração): painelCalibracao, selectCenarioReferencia,
+statusCalibracao, calibracaoAlvos, btnAplicarCalibracao,
+btnRestaurarAlvos, calibracaoResultado
+Painel 7 (traçamento): painelTracamento, comparacaoModelos,
+tabelaTracamento
+Painel 8 (gráficos): painelGraficos, graficoSortimentos,
+selectArvorePerfil, selectCenarioPerfil, graficoPerfil
+Painel 9 (CEO): painelCEO, ceoContexto, chkModoApresentacao,
+ceoKPIs, ceoIndices, ceoSociologia, ceoReceitaCenarios,
+ceoDecompCenario, ceoDecomposicao, ceoSensibilidade, ceoIC
+Painel 3.6 (planejamento — NOVO): painelPlanejamento,
+configuracaoPlanejamento, graficoProducaoLongoPrazo,
+graficoFluxoCaixa, graficoSDILongoPrazo, tabelaPlanejamento,
+indicadoresPlanejamento, btnSimularPlanejamento,
+btnAplicarPlanejamento, btnReverterPlanejamento,
+btnExportarPlanejamento, statusPlanejamento
+
+5. Ordem dos Painéis (index.html)
+text
+1.   Entrada de dados
+     Log
+2.   Equação vencedora e ranking
+2.5  Simulador de Desbaste
+3.   Volume por fator de forma
+3.5  Prognose — Projeção de Crescimento
+3.6  Planejamento de Longo Prazo (FSC)               ← NOVO v2.9.0
+4.   Afilamento (power taper + Schöepfer diagnóstico)
+5.   Cenários de traçamento
+6.   Calibração da classificação comercial
+7.   Traçamento + Comparação Schöepfer
+8.   Gráficos comparativos
+9.   Resumo executivo (CEO)
+6. Roadmap — Fases Futuras
+Fase 2 (atual + próxima)
+✅ v2.8.2+SC.r1 — Schöepfer diagnóstico + correções de log/perf
+
+✅ v2.8.2+SC.r2 — Prognose (crescimento + mortalidade + SDI)
+
+⏳ v2.9.0 — Planejamento de Longo Prazo (FSC) ← próximo
+
+⏳ v2.9.1 — Exportação PDF/Excel dos resultados
+
+Fase 3 (pós-cubagem)
+⏳ Módulo de cubagem rigorosa (pré-requisito para Schöepfer oficial)
+
+Adaptar parser.js para ler d1m, d2m, d4m, d6m, etc.
+
+Criar ajuste-schoeffer.js para ajuste local do polinómio.
+
+UI para upload e validação da cubagem.
+
+⏳ Schöepfer como motor principal (só após cubagem validada)
+
+⏳ Otimização económica (LEV / Rotação ótima)
+
+⏳ Testes automatizados (Vitest) com golden test do Banhado Grande
+
+7. Diretrizes de Desenvolvimento (não violar)
+Não alterar o motor oficial (Power Taper + calibração) sem revisão explícita.
+
+Schöepfer é diagnóstico até o módulo de cubagem estar pronto.
+
+Prognose e desbaste são mutuamente exclusivos na v2.8.2 — a
+v2.9.0 (Planejamento) vai unificar os dois num único simulador.
+
+Alvos por idade têm prioridade sobre alvos editados manualmente,
+exceto se o utilizador clicar em "Restaurar alvos default" — nesse
+caso, os alvos por idade voltam a aplicar-se.
+
+Toda nova funcionalidade deve ter:
+
+Log claro (o utilizador final precisa de auditoria).
+
+Aviso no painel (banners coloridos com semântica consistente:
+
+🔵 azul = projeção/planejamento
+
+🟠 laranja = simulação (desbaste)
+
+🟡 amarelo = atenção
+
+🔴 vermelho = erro/limite).
+
+Botão "Reverter" sempre que houver estado aplicado.
+
+Testes manuais obrigatórios antes de marcar como pronto:
+
+Carregar inentario_teste_mobras.xlsx e verificar que os log/valores
+batem com o golden de referência.
+
+Testar todos os cenários de conflito entre painéis.
+
+Verificar performance (< 2s por simulação em 2500 árvores).
+
+8. Caso de Teste de Referência (Golden)
+Ficheiro: inentario_teste_mobras.xlsx
+Espécie: Pinus
+Árvores: 2502
+Alturas medidas: 119
+hDom: 11.62 m
+IS local: 15.37 m (aos ~8 anos)
+Modelo vencedor: #1 Berkhout (R²aj=0.7337, Syx%=9.03)
+Volume físico: ≈ 219 600 m³
+Receita (Realista): R$ 33 944,99
+Alvos por idade (banda 7–9): [0, 0, 20, 70, 10]
+Calibração: convergiu com factors 0.850 / 1.059 / 0.973 / 0.961 / 1.000
+Diagnóstico SC: 2502/2502 árvores com perfil válido
+
+Comportamento esperado após cada release:
+
+Volume físico deve estar em 219 000–220 500 m³ (tolerância 1%).
+
+O log deve mostrar Vencedor: #1 Berkhout (soma de ranks = 8).
+
+O painel de comparação SC deve mostrar 3 cenários.
+
+Nenhum erro de importação no console.
+
+9. Contacto e Contexto
+Domínio: inventário florestal comercial (Pinus taeda / Eucalyptus).
+
+Região principal: Sul do Brasil (SC, PR, RS).
+
+Referências bibliográficas:
+
+Santos et al. (2019) — Schöepfer-SC.
+
+Kohler et al. (2014, 2015) — Sortimentos por idade.
+
+Embrapa (2012) — Risco vespa-da-madeira.
+
+Padoin (2007) — Densidade potencial.
+
+Heberle (2024) — Estagnação DAP.
+
+FSC P&C (v5-2) — Princípios e Critérios.
+
+Motor oficial: Power Taper Calibrado + calibração comercial.
+
+10. Checklist para iniciar v2.9.0
+Antes de começar a implementação do Painel 3.6:
+
+□ Confirmar que v2.8.2+SC.r2 está estável (golden test passa).
+□ Criar js/planejamento.js (motor) e js/ui-planejamento.js (UI).
+□ Criar js/tabelas/regimes-referencia.js com 3 regimes default.
+□ Adicionar <section id="painelPlanejamento"> ao index.html (entre 3.5 e 4).
+□ Wiring em main.js:
+Novo estado _planejamentoAtual e _estadoPrePlanejamento.
+
+prepararPainelPlanejamento() chamada ao fim de executarVolume().
+
+Guards: bloquear 2.5 e 3.5 se 3.6 estiver aplicado (e vice-versa).
+
+adicionarAvisosPlanejamento(mostrar) — banner azul nos painéis 4, 7, 8, 9.
+
+□ Adicionar regras em css/style.css para o novo painel.
+□ Testar golden test e performance.
+□ Atualizar HANDOFF - Sistema de Inventário Florestal v2.9.0.md no final.

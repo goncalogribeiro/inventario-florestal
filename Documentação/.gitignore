@@ -1,0 +1,30 @@
+# Dependências
+node_modules/
+package-lock.json
+
+# Dados sensíveis de clientes (NUNCA comitar)
+*.xlsx
+*.xls
+*.csv
+!INVENTARIO-TESTE-MOBRAS-9ANOS-67HA.xlsx
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs e temporários
+*.log
+*.tmp
+*.bak
+*~
+
+# Build
+dist/
+build/

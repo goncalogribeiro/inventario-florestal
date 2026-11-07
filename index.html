@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sistema de inventário florestal: regressão hipsométrica, volume, afilamento, prognose, traçamento e diagnóstico silvicultural.">
+  <title>Inventário Florestal v2.8.2+SC.r2</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>Inventário Florestal</h1>
+    <p class="subtitulo">
+      Regressão · Volume · Afilamento · Prognose · Traçamento · Diagnóstico Silvicultural
+    </p>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ===================================================================
+         1. ENTRADA DE DADOS
+         =================================================================== -->
+    <section id="painelEntrada" class="painel">
+      <h2>1. Entrada de dados</h2>
+
+      <div class="form-grupo">
+        <label for="arquivo">Ficheiro Excel ou CSV</label>
+        <input type="file" id="arquivo" accept=".xlsx,.xls,.csv">
+      </div>
+
+      <div class="form-grupo">
+        <label for="especie">Espécie</label>
+        <select id="especie">
+          <option value="Pinus" selected>Pinus</option>
+          <option value="Eucalipto">Eucalipto</option>
+        </select>
+      </div>
+
+      <div class="form-grupo">
+        <label>
+          <input type="checkbox" id="aplicarChauvenet" checked>
+          Aplicar filtro de Chauvenet (apenas às árvores com altura medida)
+        </label>
+      </div>
+
+      <button id="btnProcessar" disabled>Processar</button>
+    </section>
+
+    <!-- ===================================================================
+         LOG
+         =================================================================== -->
+    <section id="painelLog" class="painel">
+      <h2>Log de execução</h2>
+      <div id="log" class="log"></div>
+    </section>
+
+    <!-- ===================================================================
+         2. EQUAÇÃO VENCEDORA E RANKING
+         =================================================================== -->
+    <section id="painelResultados" class="painel" hidden>
+      <h2>2. Equação vencedora e ranking</h2>
+      <div id="vencedor"></div>
+      <div id="ranking" style="margin-top: 24px;"></div>
+    </section>
+
+    <!-- ===================================================================
+         2.5. SIMULADOR DE DESBASTE SILVICULTURAL
+         =================================================================== -->
+    <section id="painelDesbaste" class="painel" hidden>
+      <h2>2.5. Simulador de Desbaste Silvicultural</h2>
+
+      <div id="diagnosticoDesbaste"></div>
+
+      <div id="configuracaoDesbaste">
+        <h3>Configuração da Simulação</h3>
+        <p class="instrucao">
+          Ajuste os parâmetros abaixo para simular uma intervenção. O sistema
+          mostrará o impacto antes de recalcular todos os painéis de resultados.
+        </p>
+
+        <div id="editorDesbaste"></div>
+
+        <h3>Pré-visualização (Antes de Aplicar)</h3>
+        <div id="previewDesbaste"></div>
+      </div>
+
+      <!-- Resultados da Simulação aplicada -->
+      <div id="resultadoDesbaste" hidden style="margin-top: 24px; padding-top: 16px; border-top: 2px dashed #ccc;">
+        <h3 style="color: #007030;">Resultados da Simulação de Desbaste</h3>
+        <p class="nota-vista">
+          Abaixo está o balanço da intervenção. Os painéis de Volume, Afilamento,
+          Traçamento e CEO (mais abaixo na página) foram recalculados com base nas
+          árvores remanescentes.
+        </p>
+        <div id="tabelaBalancoDesbaste"></div>
+      </div>
+
+      <div class="acoes-editor" style="margin-top: 16px;">
+        <button id="btnAplicarDesbaste">
+          ✓ Aplicar Desbaste (Recalcular Sistema)
+        </button>
+        <button id="btnReverterDesbaste" class="btn-secundario" disabled>
+          ↶ Reverter para o Original
+        </button>
+        <span id="statusDesbaste" class="status-save"></span>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         3. VOLUME POR FATOR DE FORMA
+         =================================================================== -->
+    <section id="painelVolume" class="painel" hidden>
+      <h2>3. Volume por fator de forma</h2>
+
+      <div class="form-grupo">
+        <label><strong>Preenchimento de alturas em falta</strong></label>
+        <div style="display:flex; flex-direction:column; gap:6px; padding:6px 0;">
+          <label>
+            <input type="radio" name="estrategiaAltura" value="equacao" checked>
+            Equação hipsométrica (padrão) — prevê H a partir do DAP
+          </label>
+          <label>
+            <input type="radio" name="estrategiaAltura" value="media">
+            Altura média das árvores medidas — recomendado para povoamentos adultos coetâneos
+          </label>
+        </div>
+        <small style="color:#666;">
+          Quando o R²aj da relação DAP→H é fraco (R²aj &lt; 0,20), a equação
+          tem pouco poder preditivo. A altura média preserva o volume global com
+          erro comparável, sem o ruído de uma relação fraca.
+        </small>
+      </div>
+
+      <div class="form-grupo">
+        <label for="inputIdade">Idade do povoamento (anos)</label>
+        <input type="number" id="inputIdade" min="1" max="80" step="1" placeholder="ex.: 25">
+      </div>
+
+      <div class="form-grupo">
+        <label for="inputAreaTotal">Área total do projeto</label>
+        <div class="linha-form">
+          <input type="number" id="inputAreaTotal" min="0.0001" step="0.0001" placeholder="ex.: 15,71">
+          <select id="selectUnidadeArea">
+            <option value="ha" selected>hectare (ha)</option>
+            <option value="m2">metro quadrado (m²)</option>
+            <option value="alqueire_paulista">alqueire paulista (2,42 ha)</option>
+            <option value="alqueire_mg">alqueire mineiro (4,84 ha)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grupo">
+        <label>
+          <input type="checkbox" id="chkOverrideFator">
+          Substituir fator de forma da tabela
+        </label>
+        <input type="number" id="inputFatorManual" min="0.01" max="0.99"
+               step="0.0001" placeholder="ex.: 0,5050" disabled>
+      </div>
+
+      <button id="btnVolume">Calcular volume</button>
+
+      <div id="resultadoVolume" hidden>
+        <h3>Fator de forma aplicado: <span id="spanFatorAplicado">—</span></h3>
+        <div id="avisoPendenteFator" class="aviso-pendente" style="display:none;"></div>
+
+        <h3>Por parcela</h3>
+        <div class="tabela-container">
+          <table id="tabParcelas">
+            <thead>
+              <tr>
+                <th>Parcela</th><th>Área (m²)</th><th>n</th><th>N/ha</th>
+                <th>G (m²)</th><th>G/ha</th><th>V (m³)</th><th>V/ha (m³)</th>
+                <th>DAP médio</th><th>H média</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <h3>Povoamento</h3>
+        <div class="tabela-container">
+          <table id="tabPovoamento">
+            <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         3.5. PROGNOSE — PROJEÇÃO DE CRESCIMENTO (FASE 2)
+         =================================================================== -->
+    <section id="painelPrognose" class="painel" hidden>
+      <h2>3.5. Prognose — Projeção de Crescimento</h2>
+
+      <p class="instrucao">
+        Projete o povoamento para uma idade futura com
+        <strong>Chapman-Richards bivariado</strong> (H_dom via índice de sítio + Dg via CR),
+        <strong>crescimento diferencial por posição sociológica</strong> e
+        <strong>mortalidade dependente da idade + autodesbaste SDI</strong>.
+        As árvores existentes crescem; as mais vulneráveis morrem.
+        Sem ingrowth (não há em plantio comercial).
+        A simulação é <strong>opcional</strong> — nada muda nos painéis abaixo
+        até clicar em <em>Aplicar Projeção</em>.
+      </p>
+
+      <div id="configuracaoPrognose"></div>
+
+      <h3>Trajetória projetada (hDom e Dg)</h3>
+      <div id="graficoPrognose" class="grafico-container"></div>
+
+      <h3>Densidade e Área Basal</h3>
+      <div id="graficoPrognoseDensidade" class="grafico-container"></div>
+
+      <h3>Distribuição de DAP — antes vs depois</h3>
+      <div id="graficoPrognoseHistograma" class="grafico-container"></div>
+
+      <h3>Detalhe anual</h3>
+      <div id="tabelaPrognose"></div>
+
+      <div id="resultadoPrognose" hidden style="margin-top: 24px; padding-top: 16px; border-top: 2px dashed #ccc;">
+        <h3 style="color: #2B579A;">Balanço da Projeção</h3>
+        <p class="nota-vista">
+          Contraste entre o povoamento atual e o projetado. Os painéis de Volume,
+          Afilamento, Traçamento e CEO foram recalculados com as árvores projetadas.
+        </p>
+        <div id="tabelaBalancoProjecao"></div>
+      </div>
+
+      <div class="acoes-editor" style="margin-top: 16px;">
+        <button id="btnAplicarPrognose">✓ Aplicar Projeção (Recalcular Sistema)</button>
+        <button id="btnReverterPrognose" class="btn-secundario" disabled>↶ Reverter Projeção</button>
+        <span id="statusPrognose" class="status-save"></span>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         4. AFILAMENTO (POWER TAPER + DIAGNÓSTICO SCHÖEPFER)
+         =================================================================== -->
+    <section id="painelAfilamento" class="painel" hidden>
+      <h2>4. Afilamento (power taper)</h2>
+
+      <div class="resumo-afilamento">
+        β médio: <strong><span id="spanBetaMedio">—</span></strong>
+        <span class="dim">(min <span id="spanBetaMin">—</span>,
+        max <span id="spanBetaMax">—</span>)</span>
+        · H_c(6): <strong><span id="spanHc6">—</span></strong>
+        · H_c(8): <strong><span id="spanHc8">—</span></strong>
+      </div>
+
+      <div id="avisoAfilamento" class="aviso-pendente" hidden></div>
+
+      <h3>Por parcela</h3>
+      <div class="tabela-container">
+        <table id="tabAfilamentoParcela">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>Povoamento</h3>
+      <div class="tabela-container">
+        <table id="tabAfilamentoPovoamento">
+          <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <p id="auditoriaAfilamento" class="auditoria-afilamento"></p>
+    </section>
+
+    <!-- ===================================================================
+         5. CENÁRIOS DE TRAÇAMENTO
+         =================================================================== -->
+    <section id="painelCenarios" class="painel" hidden>
+      <h2>5. Cenários de traçamento</h2>
+      <p class="instrucao">
+        Edite os valores conforme o mercado. As alterações são salvas e
+        <strong>recalculadas automaticamente</strong> quando você sai do campo
+        (Tab, Enter ou clique fora). O botão <em>Recalcular agora</em> força a
+        actualização imediata. DAP max vazio = sem limite.
+      </p>
+      <div id="editorCenarios"></div>
+      <div class="acoes-editor">
+        <button id="btnRestaurarTodos" class="btn-secundario">
+          Restaurar todos os defaults
+        </button>
+        <button id="btnRecalcular" class="btn-secundario">
+          ↻ Recalcular agora
+        </button>
+        <span id="statusCenarios" class="status-save"></span>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         6. CALIBRAÇÃO DA CLASSIFICAÇÃO COMERCIAL
+         =================================================================== -->
+    <section id="painelCalibracao" class="painel" hidden>
+      <h2>6. Calibração da classificação comercial</h2>
+
+      <div class="calibracao-nota-longa">
+        <h3>Como funciona a calibração</h3>
+        <p>
+          O modelo de perfil do tronco (<em>power taper</em>) calcula o volume
+          de madeira "limpa" em cada classe de diâmetro. Mas a madeira que
+          efectivamente sai da floresta — e que é vendida — difere por três
+          razões: casca, defeitos do tronco e convenções de medição.
+        </p>
+        <p>
+          Em conjunto, estes três efeitos desviam a distribuição real da
+          teórica. A calibração compensa-os com um
+          <strong>factor de correcção</strong> aplicado ao limiar de cada
+          classe. <strong>O volume total não muda</strong> — só a forma como se
+          distribui pelas classes.
+        </p>
+      </div>
+
+      <div class="referencia-selector">
+        <label for="selectCenarioReferencia">
+          <strong>Cenário de referência:</strong>
+        </label>
+        <select id="selectCenarioReferencia"></select>
+        <span class="status-save" id="statusCalibracao"></span>
+      </div>
+
+      <h3>Alvos por classe (aplicam-se apenas ao cenário de referência)</h3>
+      <p class="instrucao"
+         style="background:#e8f0fa; padding:8px 12px; border-left:3px solid #2B579A; border-radius:3px;">
+        <strong>ℹ Alvos ajustados automaticamente por idade.</strong>
+        O sistema carrega as percentagens de referência com base na idade do
+        povoamento. Fontes: Kohler et al. (2015), Kohler et al. (2014), Santos et al. (2019).
+        Edite abaixo se tiver dados locais mais precisos.
+      </p>
+      <div id="calibracaoAlvos"></div>
+
+      <div class="acoes-editor">
+        <button id="btnAplicarCalibracao" class="btn-secundario">
+          ↻ Recalcular com alvos
+        </button>
+        <button id="btnRestaurarAlvos" class="btn-secundario">
+          Restaurar alvos default
+        </button>
+      </div>
+
+      <h3>Resultado por cenário</h3>
+      <div id="calibracaoResultado"></div>
+    </section>
+
+    <!-- ===================================================================
+         7. TRAÇAMENTO (BUCKING) + COMPARAÇÃO SCHÖEPFER
+         =================================================================== -->
+    <section id="painelTracamento" class="painel" hidden>
+      <h2>7. Traçamento (Bucking)</h2>
+
+      <!-- NOVO (v2.8.2+SC.r1) — Comparação Power Taper (oficial) vs Schöepfer-SC (diagnóstico) -->
+      <div id="comparacaoModelos"
+           style="background:#fafafa; border:1px dashed #ccc;
+                  padding:16px; border-radius:6px; margin-bottom:20px;">
+      </div>
+
+      <div id="tabelaTracamento"></div>
+    </section>
+
+    <!-- ===================================================================
+         8. GRÁFICOS COMPARATIVOS
+         =================================================================== -->
+    <section id="painelGraficos" class="painel" hidden>
+      <h2>8. Gráficos comparativos</h2>
+
+      <div class="grafico-bloco">
+        <h3>Distribuição por sortimento (%V)</h3>
+        <p class="nota-vista">
+          Base: % do volume físico (inclui energia).
+          Energia aparece esbatida na vista "sem venda".
+        </p>
+        <div id="graficoSortimentos" class="grafico-container"></div>
+      </div>
+
+      <div class="grafico-bloco">
+        <h3>Perfil do fuste com traçamento</h3>
+        <div class="grafico-controles">
+          <label>Árvore: <select id="selectArvorePerfil"></select></label>
+          <label>Cenário: <select id="selectCenarioPerfil"></select></label>
+        </div>
+        <div id="graficoPerfil" class="grafico-container"></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         9. PAINEL CEO
+         =================================================================== -->
+    <section id="painelCEO" class="painel painel-ceo" hidden>
+      <header class="ceo-header">
+        <div>
+          <h2 style="border-bottom:none; margin:0 0 4px; padding:0;">Resumo executivo</h2>
+          <p style="margin:0; font-size:13px; color:#666;">
+            Apresentação para decisores · <span id="ceoContexto"></span>
+          </p>
+        </div>
+        <div class="ceo-toggle-group">
+          <span class="ceo-toggle-label">Rentabilidade:</span>
+          <label class="ceo-toggle-radio">
+            <input type="radio" name="vistaEnergiaCEO" value="com" checked>
+            Com energia
+          </label>
+          <label class="ceo-toggle-radio">
+            <input type="radio" name="vistaEnergiaCEO" value="sem">
+            Sem energia
+          </label>
+          <label class="ceo-toggle-apresentacao">
+            <input type="checkbox" id="chkModoApresentacao">
+            <span>Modo apresentação</span>
+          </label>
+        </div>
+      </header>
+
+      <div id="ceoKPIs"></div>
+
+      <h3>Índices do povoamento</h3>
+      <div id="ceoIndices"></div>
+
+      <h3>Composição sociológica (classes de copa)</h3>
+      <div id="ceoSociologia"></div>
+
+      <h3>Receita por cenário</h3>
+      <div id="ceoReceitaCenarios"></div>
+
+      <h3>Decomposição da receita — <span id="ceoDecompCenario">—</span></h3>
+      <div id="ceoDecomposicao"></div>
+
+      <h3>Sensibilidade a preço</h3>
+      <div id="ceoSensibilidade"></div>
+
+      <h3>Incerteza amostral (IC 95%)</h3>
+      <div id="ceoIC"></div>
+    </section>
+
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
